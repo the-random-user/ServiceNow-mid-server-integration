@@ -21,3 +21,7 @@
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+#Exlude required libraries
+!commons-io-2.6.jar
+!json-20180130.jar
