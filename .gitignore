@@ -4,8 +4,14 @@
 # Log file
 *.log
 
+# Output Folders
+out/
+
 # BlueJ files
 *.ctxt
+
+# IntelliJ Files
+.idea
 
 # Mobile Tools for Java (J2ME)
 .mtj.tmp/
@@ -23,5 +29,5 @@
 hs_err_pid*
 
 #Exlude required libraries
-!commons-io-2.6.jar
-!json-20180130.jar
+!lib/
+
