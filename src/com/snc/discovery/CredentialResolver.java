@@ -15,8 +15,8 @@
  * Service Mapping and Orchestration within ServiceNow by
  * utilizing the command line TSS CLI SDK.
  *
- * Qualifier & TSS hard coded to D:\CLI, can be modified below or via env variable
- * qualifier.config, stored with the CLI tool, options include:
+ * Qualifier & TSS hard coded to C:\TSS, can be modified below or via env variable
+ * qualifier.properties, stored with the CLI tool, options include:
  * SecretServer URL
  * SecretServer Rule Name
  * SecretServer Onboarding Key
@@ -39,7 +39,7 @@ import org.json.simple.parser.ParseException;
 
 public class CredentialResolver {
 
-    //environment variable with path to folder of CLI & qualifier.config file
+    //environment variable with path to folder of CLI & qualifier.properties file
     private static String TSS_ENV_VAR = "TSS_LOCATION";
     //Required for mapping to ServiceNow
     public static final String ARG_ID = "id";
@@ -70,29 +70,35 @@ public class CredentialResolver {
     private String getSdkFilePath() {
         String cliFilePath = System.getenv(TSS_ENV_VAR);
         if (cliFilePath == null) {
-            cliFilePath = "D:\\CLI\\";
+            cliFilePath = "C:\\TSS\\";
         }
         System.out.println("Using thycotic SDK in folder: " + cliFilePath);
         return cliFilePath;
     }
 
     /**
-     * Loads the qualifier.config configuration file from the Thycotic SDK folder
+     * Loads the qualifier.properties configuration file from the Thycotic SDK folder
      *
      * @return  a parsed Properties object with Secret Server specific settings.
      * @since   1.0
      */
-    private Properties getConfigurationProperties() {
+    private Properties getConfigurationProperties(String filename) throws Exception {
         Properties cliProperties = new Properties();
+        FileInputStream configFileStream = null;
         try {
-            if (!new File(sdkFilePath + "qualifier.config").isFile()) {
-                System.err.println("Can't find qualifer.config path for tss.exe initialization.");
+            if (!new File(sdkFilePath + filename).isFile()) {
+                System.err.println("Can't find " + filename + " path for tss.exe initialization.");
             }
             else {
-                cliProperties.load(new FileInputStream(sdkFilePath + "qualifier.config"));
+                configFileStream = new FileInputStream(sdkFilePath + filename);
+                cliProperties.load(configFileStream);
             }
         } catch (IOException e) {
             System.err.println("Problem loading cli properties file: " + e);
+        }
+        finally {
+            if(configFileStream != null)
+                configFileStream.close();
         }
         return cliProperties;
     }
@@ -126,22 +132,37 @@ public class CredentialResolver {
 
     /**
      * The Thycotic SDK requires an initial call to configure the connection to Secret Server. Calls the init command
-     * which should only need to happen once per installation, which applies the settings in the qualifier.config file
+     * which should only need to happen once per installation, which applies the settings in the qualifier.properties file.
+     * After initialization is succesful the config file is deleted.
      *
      * @since   1.0
      */
     private void initializeSdk() throws Exception {
-        Properties props = getConfigurationProperties();
-        //Setting up the process for Authentication for the Secret Server (Required Once per Machine)
-        String keyArgument = props.getProperty("datasource.secretServerKey");
-        if ((keyArgument != null) && (!keyArgument.isEmpty())) {
-            keyArgument = " -k " + keyArgument;
+        String qualiferConfigFile = "qualifier.properties";
+        try {
+            Properties props = getConfigurationProperties("qualifier.properties");
+            //Setting up the process for Authentication for the Secret Server (Required Once per Machine)
+            String keyArgument = props.getProperty("datasource.secretServerKey");
+            if ((keyArgument != null) && (!keyArgument.isEmpty())) {
+                keyArgument = " -k " + keyArgument;
+            }
+            System.out.println("SDK not configured, initializing.");
+            executeCommand("init --url " + props.getProperty("datasource.secretServerUrl") + " -r " + props.getProperty("datasource.secretServerRule") + keyArgument);
+            //Setting up the process for the Cache Strategy after Authenticating with Secret Server (Required Once per Machine)
+            executeCommand("cache --strategy " + props.getProperty("datasource.secretServerCacheStrat") + " --age " + props.getProperty("datasource.secretServerCacheAge"));
+            System.out.println("Finished initializing SDK");
         }
-        System.out.println("SDK not configured, initializing.");
-        executeCommand("init --url " + props.getProperty("datasource.secretServerUrl") + " -r " + props.getProperty("datasource.secretServerRule") + keyArgument);
-        //Setting up the process for the Cache Strategy after Authenticating with Secret Server (Required Once per Machine)
-        executeCommand("cache --strategy " + props.getProperty("datasource.secretServerCacheStrat") + " --age " + props.getProperty("datasource.secretServerCacheAge"));
-        System.out.println("Finished initializing SDK");
+        catch (Exception e) {
+            System.err.println("Error initializing SDK.");
+            throw e;
+        }
+        File configFile = new File(sdkFilePath + qualiferConfigFile);
+        String absolutePath = configFile.getAbsolutePath();
+        if (configFile.isFile()) {
+            if (!configFile.delete()) {
+                System.err.println("Error deleting file at: " + absolutePath);
+            }
+        }
     }
 
     /**
@@ -173,7 +194,7 @@ public class CredentialResolver {
         int secretID = Integer.parseInt(id);
         String typeLookup = type + ".";
 
-        Properties templateMappings = getConfigurationProperties();
+        Properties templateMappings = getConfigurationProperties("secretmap.properties");
 
         //Setup the Thycotic SDK authentication if the config file doesn't exist
         if (!new File("credentials.config").isFile()) {
@@ -270,9 +291,9 @@ public class CredentialResolver {
         arguments.put("id", args[0]);
         arguments.put("type", args[1]);
         obj.resolve(arguments);
-        System.out.println("I spy the following credentials: ");
+        System.out.println("The following keys were returned: ");
         for (Object key : obj.fProps.keySet()) {
-            System.out.println(key + ": " + obj.fProps.get(key));
+            System.out.println(key);
         }
     }
 }
